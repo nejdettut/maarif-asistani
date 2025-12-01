@@ -1,25 +1,15 @@
 import streamlit as st
 import google.generativeai as genai
 from fpdf import FPDF
-import time
 
 # --- AYARLAR ---
-
-# 1.API Anahtarını Streamlit'in gizli kasasından çekiyoruz.
-if "GOOGLE_API_KEY" in st.secrets:
-    API_KEY = st.secrets["GOOGLE_API_KEY"]
-else:
-    st.error("HATA: API Anahtarı bulunamadı! Lütfen Streamlit Secrets ayarlarını yapın.")
-    st.stop()
-
-# 2. SAYFA YAPISI (Genişletilmiş Layout)
 st.set_page_config(
     page_title="Maarif Asistanı",
     page_icon="🎓",
-    layout="wide" 
+    layout="wide"
 )
 
-# 3. TÜRKÇE KARAKTER DESTEKLİ PDF FONKSİYONU
+# --- PDF MOTORU ---
 def create_pdf(text, title="Sinav Kagidi"):
     class PDF(FPDF):
         def header(self):
@@ -30,10 +20,6 @@ def create_pdf(text, title="Sinav Kagidi"):
     pdf = PDF()
     pdf.add_page()
     
-    # Türkçe karakter sorunu olmaması için font ayarı (Arial kullanıyoruz)
-    # Not: FPDF'in standart fontu Türkçe karakterleri tam desteklemeyebilir.
-    # Bu yüzden karakterleri latin alfabesine çeviren bir düzeltme yapıyoruz.
-    # İleride özel font dosyası yükleyerek bunu tam çözebiliriz.
     def tr_duzelt(metin):
         dic = {'ğ':'g', 'Ğ':'G', 'ş':'s', 'Ş':'S', 'ı':'i', 'İ':'I', 'ç':'c', 'Ç':'C', 'ü':'u', 'Ü':'U', 'ö':'o', 'Ö':'O'}
         for k, v in dic.items():
@@ -41,123 +27,121 @@ def create_pdf(text, title="Sinav Kagidi"):
         return metin
 
     pdf.set_font("Arial", size=12)
-    
-    # Satır satır yazma
     for line in text.split('\n'):
-        # Karakterleri PDF uyumlu hale getir
         clean_line = tr_duzelt(line)
         pdf.multi_cell(0, 10, clean_line)
         
     return pdf.output(dest='S').encode('latin-1', 'ignore')
 
-# 4. YAPAY ZEKA AYARLARI
+# --- GÜVENLİK VE API ---
+if "GOOGLE_API_KEY" in st.secrets:
+    API_KEY = st.secrets["GOOGLE_API_KEY"]
+else:
+    st.error("HATA: API Anahtarı bulunamadı! Lütfen Secrets ayarlarını yapın.")
+    st.stop()
+
 try:
-    if "GOOGLE_API_KEY" in st.secrets:
-        API_KEY = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     st.error(f"API Hatası: {e}")
 
-# --- ARAYÜZ (GOOGLE TARZI TASARIM) ---
-
-# Üst Boşluk (Logoyu ortaya itmek için)
-st.write(" ")
+# --- ARAYÜZ TASARIMI (VİTRİN) ---
 st.write(" ")
 
-# ORTA SÜTUNU OLUŞTURUYORUZ (Her şey ortada dursun)
-col1, col2, col3 = st.columns([1, 2, 1])
+# Sayfayı 3 sütuna bölüyoruz, orta sütun daha geniş (Görsel ve Başlık burada olacak)
+col1, col2, col3 = st.columns([1, 6, 1])
 
 with col2:
-    # LOGO
-    st.image("https://images.unsplash.com/photo-1546410531-bb4caa6b424d?q=80&w=2071&auto=format&fit=crop", caption="Maarif Asistanı", use_container_width=True)
-    st.markdown("<h1 style='text-align: center; color: #333;'>Maarif Asistanı</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Yapay Zeka Destekli Sınav Hazırlama Motoru</p>", unsafe_allow_html=True)
+    # 1. GÖRSEL (Banner)
+    st.image("https://images.unsplash.com/photo-1501504905252-473c47e087f8?q=80&w=1974&auto=format&fit=crop", use_container_width=True)
+    
+    # 2. BÜYÜK BAŞLIK
+    st.markdown("<h1 style='text-align: center; font-size: 3.5rem; color: #1E3A8A;'>MAARİF ASİSTANI</h1>", unsafe_allow_html=True)
+    
+    # 3. İSİM VE UNVAN (Senin İmzan)
+    st.markdown("<h3 style='text-align: center; color: #555;'>Nejdet Tut</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 1.2rem; color: #888;'>EdTech Developer & Python Instructor</p>", unsafe_allow_html=True)
+    
+    st.write("---") # Ayırıcı Çizgi
 
-    # AYARLAR (Açılır Kapanır Kutu - Expander)
+    # --- AYARLAR KUTUSU ---
     with st.expander("⚙️ Sınav Ayarlarını Yapılandır (Tıkla)", expanded=False):
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         with c1:
-            seviye = st.selectbox("Sınıf Seviyesi:", ("İlkokul (1-4)", "Ortaokul (5-8)", "Lise (9-12)", "Üniversite Hazırlık"))
+            soru_tipi = st.selectbox(
+                "Soru Tipi Seçin:",
+                ("Çoktan Seçmeli (Test)", "Doğru / Yanlış", "Boşluk Doldurma", "Klasik (Açık Uçlu)", "Eşleştirme")
+            )
+            seviye = st.selectbox("Sınıf Seviyesi:", ("İlkokul (1-4)", "Ortaokul (5-8)", "Lise (9-12)", "Üniversite"))
         with c2:
             zorluk = st.slider("Zorluk:", 1, 5, 3)
-        with c3:
             soru_sayisi = st.number_input("Soru Sayısı:", 1, 20, 5)
 
-    # ARAMA ÇUBUĞU VE BUTON (Google Gibi)
-    konu = st.text_input("", placeholder="Hangi konuda sınav hazırlamak istersin? (Örn: Kuvvet ve Hareket, Python Listeler)")
+    # ARAMA VE BUTON
+    konu = st.text_input("", placeholder="Hangi konuda sınav hazırlamak istersin? (Örn: Kuvvet ve Hareket, Python Döngüler)")
     
-    # Butonu Ortalamak İçin
-    b1, b2, b3 = st.columns([1, 1, 1])
+    # Butonu ortalamak için küçük sütunlar
+    b1, b2, b3 = st.columns([1, 2, 1])
     with b2:
-        generate_btn = st.button("✨ Sınavı Oluştur", type="primary", use_container_width=True)
+        generate_btn = st.button("✨ Soruları Oluştur", type="primary", use_container_width=True)
 
-# --- İŞLEM BÖLÜMÜ ---
+# --- İŞ MANTIĞI (BACKEND) ---
 if generate_btn:
     if not konu:
         st.warning("Lütfen bir konu yazın.")
     else:
-        with st.spinner('Yapay Zeka soruları kurguluyor...'):
+        with st.spinner(f'{soru_tipi} hazırlanıyor...'):
             try:
-                # Prompt (Cevap anahtarını ayırmak için özel işaret ekledik)
+                # Prompt Kurgusu
+                base_instruction = f"Sen uzman bir öğretmensin. Konu: {konu}, Seviye: {seviye}, Zorluk: {zorluk}/5, Adet: {soru_sayisi}."
+                
+                if soru_tipi == "Çoktan Seçmeli (Test)":
+                    type_instruction = "GÖREV: Çoktan seçmeli sorular hazırla (A,B,C,D). Kod veya matematik sorusuysa sağlama yap."
+                elif soru_tipi == "Doğru / Yanlış":
+                    type_instruction = "GÖREV: Doğru/Yanlış soruları hazırla. Format: '1. [İfade] (___)'. Cevap anahtarında D/Y belirt."
+                elif soru_tipi == "Boşluk Doldurma":
+                    type_instruction = "GÖREV: Cümledeki anahtar kelimeyi çıkarıp '__________' koy. Cevabı not et."
+                elif soru_tipi == "Klasik (Açık Uçlu)":
+                    type_instruction = "GÖREV: Yorum ve işlem gerektiren açık uçlu sorular sor. Beklenen cevabı özetle."
+                elif soru_tipi == "Eşleştirme":
+                    type_instruction = "GÖREV: Grup A (1,2..) ve Grup B (a,b..) olarak eşleştirme sorusu hazırla."
+
                 prompt = f"""
-                Sen MEB müfredatına hakim uzman bir öğretmensin.
-                Konu: {konu}, Seviye: {seviye}, Zorluk: {zorluk}/5, Soru Sayısı: {soru_sayisi}.
-                
-                GÖREV:
-                1. Soruları hazırla.
-                2. Şıkları (A,B,C,D) net yaz.
-                3. Kod soruları varsa zihninde sağlama yap.
-                4. EN SONA, sorular bittikten sonra tam olarak şu ayırıcıyı koy: "---CEVAP_ANAHTARI_BOLUMU---"
-                5. Bu ayırıcıdan sonra cevap anahtarını yaz.
-                
-                Çıktı Formatı:
-                Soru 1: ...
-                ...
-                ---CEVAP_ANAHTARI_BOLUMU---
-                1-A
-                2-C
-                ...
+                {base_instruction}
+                {type_instruction}
+                ÖNEMLİ: Sorular bittikten sonra TAM OLARAK şu ayırıcıyı koy: "---CEVAP_ANAHTARI---". Sonra cevapları yaz.
                 """
                 
                 response = model.generate_content(prompt)
                 full_text = response.text
                 
-                # METNİ PARÇALA (Sorular ve Cevaplar)
-                if "---CEVAP_ANAHTARI_BOLUMU---" in full_text:
-                    parts = full_text.split("---CEVAP_ANAHTARI_BOLUMU---")
-                    sorular_kismi = parts[0].strip()
-                    cevaplar_kismi = parts[1].strip()
+                if "---CEVAP_ANAHTARI---" in full_text:
+                    parts = full_text.split("---CEVAP_ANAHTARI---")
+                    sorular = parts[0].strip()
+                    cevaplar = parts[1].strip()
                 else:
-                    sorular_kismi = full_text
-                    cevaplar_kismi = "Cevap anahtarı ayrıştırılamadı."
+                    sorular = full_text
+                    cevaplar = "Ayrıştırma hatası."
 
-                # EKRANA BAS
-                st.success("Sınav Hazır!")
-                st.write(sorular_kismi)
-                with st.expander("Cevap Anahtarını Gör"):
-                    st.write(cevaplar_kismi)
+                st.success("Sınav Başarıyla Hazırlandı!")
                 
-                # PDF OLUŞTURMA (İki seçenek)
-                pdf_sorular = create_pdf(sorular_kismi, title=f"{konu} - Sorular")
-                pdf_tam = create_pdf(full_text.replace("---CEVAP_ANAHTARI_BOLUMU---", "\n\nCEVAP ANAHTARI\n----------------"), title=f"{konu} - Tam")
-
-                # BUTONLAR
-                col_pdf1, col_pdf2 = st.columns(2)
-                with col_pdf1:
-                    st.download_button(
-                        label="📄 Sadece Soruları İndir (PDF)",
-                        data=pdf_sorular,
-                        file_name=f"{konu}_sorular.pdf",
-                        mime="application/pdf"
-                    )
-                with col_pdf2:
-                    st.download_button(
-                        label="📑 Cevap Anahtarlı İndir (PDF)",
-                        data=pdf_tam,
-                        file_name=f"{konu}_tam.pdf",
-                        mime="application/pdf"
-                    )
+                tab1, tab2 = st.tabs(["📄 Sınav Kağıdı", "🔑 Cevap Anahtarı"])
+                with tab1:
+                    st.write(sorular)
+                with tab2:
+                    st.write(cevaplar)
+                
+                # PDF Oluşturma
+                pdf_soru = create_pdf(sorular, title=f"{konu} - {soru_tipi}")
+                pdf_tam = create_pdf(full_text.replace("---CEVAP_ANAHTARI---", "\n\nCEVAP ANAHTARI\n----------------"), title="Tam")
+                
+                # İndirme Butonları
+                c_pdf1, c_pdf2 = st.columns(2)
+                with c_pdf1:
+                    st.download_button("📄 Soruları İndir (PDF)", data=pdf_soru, file_name="sorular.pdf", mime="application/pdf")
+                with c_pdf2:
+                    st.download_button("📑 Cevaplı İndir (PDF)", data=pdf_tam, file_name="cevapli_sinav.pdf", mime="application/pdf")
 
             except Exception as e:
                 st.error(f"Hata: {e}")
